@@ -1,4 +1,5 @@
 import numpy as np
+from vertex import Vertex
 
 class GraphSegmentator():
     '''Class that is capable of generating a graph based segmentation of the given image.
@@ -15,19 +16,25 @@ class GraphSegmentator():
                 This determines how large each cluster 'wants' to be.
         '''
         self.image = image
-        self.width, self.height = self.image.shape
+        self.width, self.height, _ = self.image.shape
         self.threshold = lambda cluster: k / len(cluster)
 
         def distance(vertex1, vertex2):
             return np.linalg.norm(self.image[vertex1], self.image[vertex2])
 
-        # Nested dictionaries, where every pixel is a key in the outer dictionary
-        # and only those pixel's neighbours are keys in the inner dictionary
-        self.weights = {
-            vertex: {
-                neighbour: distance(vertex, neighbour) for neighbour in self.neighbours(vertex)
-            } for vertex in image
-        }
+        def iterate_image():
+            for x in range(self.width):
+                for y in range(self.height):
+                    yield np.array([x, y])
+
+        # Matrix that contains the vertex object for each coordinates
+        self.vertices = np.array([
+            [
+                Vertex(np.array([x, y])) for y in range(self.height)
+            ] for x in range(self.width)
+        ])
+
+        self.clusters = [[vertex] for vertex in self.vertices]
 
     def neighbours(self, vertex):
         '''Returns the set of 8-connected neighbouring vertices in the image.
@@ -65,7 +72,7 @@ class GraphSegmentator():
         ----------
         Parameters:
             cluster1:
-                iterable of vertices that supports union-find
+                iterable of vertices that support union-find
         Returns:
             dictionary where the keys are vertices in the border and the
             values are their neighbours in the cluster
@@ -89,7 +96,7 @@ class GraphSegmentator():
             image:
                 image to use for vertex values
             cluster:
-                iterable of vertices that supports union-find
+                iterable of vertices that support union-find
         Returns:
             an iterable of weights (floats) that supports union-find
         '''
@@ -102,7 +109,7 @@ class GraphSegmentator():
             image:
                 image to use for vertex values
             cluster:
-                iterable of vertices that supports union-find
+                iterable of vertices that support union-find
         Returns:
             float
         '''
@@ -115,7 +122,7 @@ class GraphSegmentator():
             image:
                 image to use for vertex values
             cluster1, cluster2:
-                iterable of vertices that supports union-find
+                iterable of vertices that support union-find
         Returns:
             float
         '''
@@ -128,7 +135,7 @@ class GraphSegmentator():
             image:
                 image to use for vertex values
             cluster1, cluster2:
-                iterable of vertices that supports union-find
+                iterable of vertices that support union-find
         Returns:
             float
         '''
@@ -149,7 +156,7 @@ class GraphSegmentator():
             image:
                 image to use for vertex values
             cluster1, cluster2:
-                iterable of vertices that supports union-find
+                iterable of vertices that support union-find
         Returns:
             True if the is evidence of a boundary, false otherwise
         '''
