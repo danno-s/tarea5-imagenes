@@ -1,9 +1,5 @@
 import numpy as np
 
-k = 1
-image = np.array((100,100))
-width, height = image.shape[0:1]
-
 class GraphSegmentator():
     '''Class that is capable of generating a graph based segmentation of the given image.
     Handles cluster objects that represent a set of vertices, and support union-find operations.
@@ -19,6 +15,7 @@ class GraphSegmentator():
                 This determines how large each cluster 'wants' to be.
         '''
         self.image = image
+        self.width, self.height = self.image.shape
         self.threshold = lambda cluster: k / len(cluster)
 
         def distance(vertex1, vertex2):
@@ -48,17 +45,17 @@ class GraphSegmentator():
             if y - 1 >= 0:
                 neighbours.append(np.array([x - 1, y - 1]))
             neighbours.append(np.array([x - 1, y]))
-            if y + 1 < height:
+            if y + 1 < self.height:
                 neighbours.append(np.array([x - 1, y + 1]))
         if y - 1 >= 0:
             neighbours.append(np.array([x, y - 1]))
-        if y + 1 < height:
+        if y + 1 < self.height:
             neighbours.append(np.array([x, y + 1]))
-        if x + 1 < width:
+        if x + 1 < self.width:
             if y - 1 >= 0:
                 neighbours.append(np.array([x + 1, y - 1]))
             neighbours.append(np.array([x + 1, y]))
-            if y + 1 < height:
+            if y + 1 < self.height:
                 neighbours.append(np.array([x + 1, y + 1]))
         return neighbours
  
@@ -122,8 +119,7 @@ class GraphSegmentator():
         Returns:
             float
         '''
-        threshold1, threshold2 = k / len(cluster1), k / len(cluster2)
-        return min(self.internal_dif(cluster1) + threshold1, self.internal_dif(cluster2) + threshold2)
+        return min(self.internal_dif(cluster1) + self.threshold(cluster1), self.internal_dif(cluster2) + self.threshold(cluster2))
 
     def dif(self, cluster1, cluster2):
         '''Returns the difference between two clusters
