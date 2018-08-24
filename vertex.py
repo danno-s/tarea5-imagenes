@@ -18,12 +18,20 @@ class Vertex():
         '''
         return self.coordinates == other_vertex.coordinates
 
+    def __ne__(self, other_vertex):
+        '''Simple inequality based on the coordinates field
+        '''
+        return self.coordinates != other_vertex.coordinates
+
     def __str__(self):
         '''Returns a nicely formatted string representing this vertex
         '''
         if self != self.parent:
             return "Vertex[{}, {}]".format(self.coordinates, self.parent)
         return "Vertex[{}, root]".format(self.coordinates)
+
+    def __hash__(self):
+        return self.__str__().__hash__()
 
     def find(self):
         '''Returns the vertex that acts as the root of this cluster.
@@ -32,11 +40,11 @@ class Vertex():
             self.parent = self.parent.parent
         return self.parent
 
-    def unite(self, new_root):
-        '''Changes this vertex's parent to the given vertex
+    def unite(self, new_element):
+        '''Changes the given vertex's parent to this
         ----------
         Parameters:
-            new_root:
+            new_element:
                 Vertex to be used as this instance's parent
         '''
-        self.parent = new_root
+        new_element.parent = self
