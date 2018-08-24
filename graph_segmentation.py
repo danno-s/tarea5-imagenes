@@ -65,9 +65,9 @@ class GraphSegmentator():
                         f.write(file_string)
                     # If distance is not 0, then store in array for later sorting
                     distances.append([dist, file_string])
+                    self.lines += 1
 
                 counter = (counter + 1) % 4000
-                self.lines += 1
             
             for _, line in sorted(distances, key = lambda elem: elem[0]):
                 f.write(line)
@@ -82,7 +82,6 @@ class GraphSegmentator():
             self.lines = int(f.readline())
             f.close()
 
-    
     def distance(self, vertex1, vertex2):
         return np.linalg.norm(self.image[vertex1] - self.image[vertex2])
 
@@ -229,4 +228,17 @@ if __name__ == '__main__':
     import skimage.io
     img = skimage.io.imread("images/image_1.jpg")
     g = GraphSegmentator(img, 150, store_data=True)
-    g.segment()
+    clusters = g.segment()
+
+    import colorsys
+    N = len(clusters)
+    HSV_tuples = [(x*1.0/N, 0.5, 0.5) for x in range(N)]
+    RGB_tuples = list(map(lambda x: colorsys.hsv_to_rgb(*x), HSV_tuples))
+
+    new_img = np.zeros(img.shape)
+
+    for index, cluster in enumerate(clusters):
+        new_img[cluster] = RGB_tuples[index]
+
+    skimage.io.imsave("result.png", new_img)
+    
