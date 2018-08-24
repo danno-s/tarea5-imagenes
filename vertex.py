@@ -36,8 +36,8 @@ class Vertex():
     def find(self):
         '''Returns the vertex that acts as the root of this cluster.
         '''
-        while self.parent != self.parent.parent:
-            self.parent = self.parent.parent
+        if self.parent != self:
+            self.parent = self.parent.find()
         return self.parent
 
     def unite(self, new_element):

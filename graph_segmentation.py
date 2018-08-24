@@ -1,7 +1,9 @@
 import numpy as np
 import re
 import os
+import time
 from vertex import Vertex
+from edge import Edge
 
 class GraphSegmentator():
     '''Class that is capable of generating a graph based segmentation of the given image.
@@ -40,47 +42,44 @@ class GraphSegmentator():
 
         self.clusters = {vertex: [vertex] for vertex in self.image_iterator()}
 
-        self.edges_filename = 'edges.tmp'
+        # We must parse the edges right away to have efficient mst calculations later on.
+        # Because of this, we start the algorithm right away, by merging two vertices if a weight is 0.
+        # This saves up a lot of resources, because most of the edges in an image have weight 0.
+        self.edges = {}
 
-        self.lines = None
-        if not os.path.exists(self.edges_filename):
-            # Save the edge data in a file, because its too heavy for dynamic memory
-            f = open(self.edges_filename, 'w')
-            counter = 0
-            distances = []
-            self.lines = 0
-            for vertex in self.image_iterator():
-                print("Calculating weights{}   ".format('.' * int(counter / 1000)), end="\r")
-                for neighbour in self.neighbours(vertex):
-                    dist = self.distance(vertex, neighbour)
-                    file_string = "{}:[{},{}][{},{}]\n".format(
-                        self.distance(vertex, neighbour),
-                        vertex[0], 
-                        vertex[1], 
-                        neighbour[0], 
-                        neighbour[1]
-                    )
-                    # Write straight away if distance is 0
-                    if dist == 0:
-                        f.write(file_string)
-                    # If distance is not 0, then store in array for later sorting
-                    distances.append([dist, file_string])
-                    self.lines += 1
+        c = 0
+        for vertex in self.image_iterator():
+            print("Calculating edges... {:.2%}".format(c / self.width / self.height), end="\r", flush=True)
+            c += 1
+            for neighbour in self.neighbours(vertex):
+                dist = self.distance(vertex, neighbour)
+                # Try to merge vertices if distance is 0.
+                if dist == 0:
+                    root1, root2 = self.vertices[vertex].find(), self.vertices[neighbour].find()
+                    # Merge if on different clusters
+                    if root1 != root2:
+                        # Update storage structures
+                        self.clusters[root1.coordinates].extend(self.clusters[root2.coordinates])
+                        del self.clusters[root2.coordinates]
+                        # Update union-find structure        
+                        root1.unite(root2)
+                # Skip edge if already stored the reflection
+                if (neighbour, vertex) in self.edges:
+                    continue
+                # If not, store edge in dictionary
+                self.edges[(vertex, neighbour)] = Edge(vertex, neighbour, distance = dist)
+        print("Calculating edges... {:.2%}".format(c / self.width / self.height), end="\r", flush=True)
 
-                counter = (counter + 1) % 4000
-            
-            for _, line in sorted(distances, key = lambda elem: elem[0]):
-                f.write(line)
-
-            f.close()
-            if self.store_data:
-                f = open("{}.meta".format(self.edges_filename), 'w')
-                f.write("{}".format(self.lines))
-                f.close()
+    def get_edge(self, vertex1, vertex2):
+        '''Returns the weight of the edge that connects vertex1 and vertex2.
+        Assumes given vertices are neighbourss in the image
+        '''
+        if (vertex1, vertex2) in self.edges:
+            return self.edges[(vertex1, vertex2)]
+        elif (vertex2, vertex1) in self.edges:
+            return self.edges[(vertex2, vertex1)]
         else:
-            f = open("{}.meta".format(self.edges_filename), 'r')
-            self.lines = int(f.readline())
-            f.close()
+            return Edge(vertex1, vertex2, distance = 0)
 
     def distance(self, vertex1, vertex2):
         return np.linalg.norm(self.image[vertex1] - self.image[vertex2])
@@ -128,27 +127,26 @@ class GraphSegmentator():
         Returns:
             an iterable of weights (floats) that supports union-find
         '''
-        # Array of weights for this cluster
-        weights = []
         # Dictionary of union-find nodes for the algorithm
         mst = {}
-        for cluster_vertex in self.clusters[root.coordinates]:
-            for neighbour in self.neighbours(cluster_vertex):
-                if self.vertices[cluster_vertex].find() == self.vertices[neighbour].find():
-                    weights.append([self.distance(cluster_vertex, neighbour), cluster_vertex, neighbour])
-            mst[cluster_vertex] = Vertex(cluster_vertex)
+        edges = []
+        for vertex in self.clusters[root.coordinates]:
+            for neighbour in self.neighbours(vertex):
+                if self.vertices[vertex].find() == self.vertices[neighbour].find():
+                    edges.append(self.get_edge(vertex, neighbour))
+            mst[vertex] = Vertex(vertex)
 
         mst_weights = []
 
-        for weight, vertex1, vertex2 in sorted(weights, key=lambda elem: elem[0]):
+        for edge in sorted(edges, key=lambda edge: edge.weight):
             # Edge has already been counted
-            if mst[vertex1].find() == mst[vertex2].find():
+            if mst[edge.vertex1].find() == mst[edge.vertex2].find():
                 continue
             # There is no edge connecting the nodes in the mst
             else:
                 # Connect the nodes with this edge
-                mst[vertex1].find().unite(mst[vertex2].find())
-                mst_weights.append(weight)
+                mst[edge.vertex1].find().unite(mst[edge.vertex2].find())
+                mst_weights.append(edge.weight)
 
             if len(mst.keys()) == len(self.clusters[root.coordinates]):
                 break
@@ -183,46 +181,25 @@ class GraphSegmentator():
 
     def segment(self):
         '''Applies the algorithm explained in the paper.
-        Deletes the edge information file when the algorithm is over
         '''
-        f = open(self.edges_filename, 'r')
-
-        counter = 0
-
         # Algorithm
-        for line in f:
-            print("Processing edges {:.2%}".format(counter / self.lines), end="\r")
-            weight, vertex1, vertex2 = parse_line(line)
+        remaining_edges = len(self.edges)
+        c = 0
+        for pair in sorted(self.edges, key = lambda elem: self.edges[elem].weight):
+            print("Processing edges... {:.2%}".format(c / remaining_edges), end="\r", flush=True)
+            c += 1
+            weight, vertex1, vertex2 = self.edges[pair].weight, pair[0], pair[1]
             root1, root2 = self.vertices[vertex1].find(), self.vertices[vertex2].find()
             if (root1 != root2 and
                 weight < self.minimum_internal_dif(root1, root2)):
                 # Mutate the dictionary to merge the new clusters
-                for vertex in self.clusters[root2.coordinates]:
-                    self.clusters[root1.coordinates].append(vertex)
+                self.clusters[root1.coordinates].extend(self.clusters[root2.coordinates])
                 del self.clusters[root2.coordinates]
                 # Mutate the union-find to update with the join
                 root1.unite(root2)
-            counter += 1
-        print("Processing edges {:.2%}".format(counter / self.lines), end="\r")
-
-        f.close()
-
-        if not self.store_data:
-            # Delete the edge data
-            os.remove(self.edges_filename)
+        print("Processing edges... {:.2%}".format(c / remaining_edges), end="\r", flush=True)
 
         return self.clusters.values()
-
-
-line_pattern = re.compile(r"(\d*\.\d*):\[(\d*),(\d*)\]\[(\d*),(\d*)\]")
-def parse_line(line):
-    '''Parses a line of the edge file defined in GraphSegmentator
-    -------
-    Returns:
-        a float, and two tuples
-    '''
-    match = line_pattern.match(line)
-    return float(match.group(1)), (int(match.group(2)), int(match.group(3))), (int(match.group(4)), int(match.group(5)))
 
 if __name__ == '__main__':
     import skimage.io
