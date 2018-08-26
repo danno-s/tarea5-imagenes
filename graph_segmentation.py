@@ -186,7 +186,7 @@ class GraphSegmentator():
         remaining_edges = len(self.edges)
         c = 0
         for pair in sorted(self.edges, key = lambda elem: self.edges[elem].weight):
-            print("Processing edges... {:.2%}".format(c / remaining_edges), end="\r", flush=True)
+            print("Processing edges... {:.2%}   ".format(c / remaining_edges), end="\r", flush=True)
             c += 1
             weight, vertex1, vertex2 = self.edges[pair].weight, pair[0], pair[1]
             root1, root2 = self.vertices[vertex1].find(), self.vertices[vertex2].find()
@@ -203,19 +203,39 @@ class GraphSegmentator():
 
 if __name__ == '__main__':
     import skimage.io
-    img = skimage.io.imread("images/image_1.jpg")
-    g = GraphSegmentator(img, 150, store_data=True)
-    clusters = g.segment()
-
+    import skimage.color
+    import datetime
     import colorsys
-    N = len(clusters)
-    HSV_tuples = [(x*1.0/N, 0.5, 0.5) for x in range(N)]
-    RGB_tuples = list(map(lambda x: colorsys.hsv_to_rgb(*x), HSV_tuples))
 
-    new_img = np.zeros(img.shape)
+    def segment_image(img, result_name):
+        start = datetime.datetime.now()
+        print("Starting at {}.".format(start))
+        g = GraphSegmentator(img, 1000, store_data=True)
+        clusters = g.segment()
+        finish = datetime.datetime.now()
+        print("Finished at {}.".format(finish))
+        print("Calculation time: {}".format(finish - start))
 
-    for index, cluster in enumerate(clusters):
-        new_img[cluster] = RGB_tuples[index]
+        N = len(clusters)
+        HSV_tuples = [(x*1.0/N, 0.5, 0.5) for x in range(N)]
+        RGB_tuples = map(lambda x: colorsys.hsv_to_rgb(*x), HSV_tuples)
 
-    skimage.io.imsave("result.png", new_img)
-    
+        new_img = np.zeros(img.shape)
+
+        for cluster, color in zip(clusters, RGB_tuples):
+            for pixel in cluster:
+                new_img[pixel] = color
+
+        skimage.io.imsave(result_name, new_img)
+
+    img = skimage.io.imread("images/image_6.png")
+
+    img = skimage.color.convert_colorspace(img, 'RGB', 'HSV')
+
+    segment_image(img, "result_image6HSV.jpg")
+
+    img = skimage.io.imread("images/image_6.png")
+
+    img = skimage.color.rgb2lab(img)
+
+    segment_image(img, "result_image6LAB.jpg")
