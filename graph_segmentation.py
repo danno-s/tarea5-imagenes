@@ -10,7 +10,7 @@ class GraphSegmentator():
     Handles cluster objects that represent a set of vertices, and support union-find operations.
     Stores edge data in a temporary file, deleted when the segmentation is completed.
     '''
-    def __init__(self, image, k, store_data=False):
+    def __init__(self, image, k):
         '''Constructor.
         ----------
         Parameters:
@@ -20,8 +20,6 @@ class GraphSegmentator():
                 The free parameter of the segmentation. 
                 This determines how large each cluster 'wants' to be.
         '''
-        self.store_data = store_data
-
         self.image = image
         self.width, self.height, _ = self.image.shape
         self.threshold = lambda vertex: k / len(self.clusters[self.vertices[vertex.coordinates].find().coordinates])
@@ -42,6 +40,8 @@ class GraphSegmentator():
 
         self.clusters = {vertex: [vertex] for vertex in self.image_iterator()}
 
+        self.mst = {vertex: [] for vertex in self.image_iterator()}
+
         # We must parse the edges right away to have efficient mst calculations later on.
         # Because of this, we start the algorithm right away, by merging two vertices if a weight is 0.
         # This saves up a lot of resources, because most of the edges in an image have weight 0.
@@ -58,9 +58,13 @@ class GraphSegmentator():
                     root1, root2 = self.vertices[vertex].find(), self.vertices[neighbour].find()
                     # Merge if on different clusters
                     if root1 != root2:
-                        # Update storage structures
+                        # Update cluster list
                         self.clusters[root1.coordinates].extend(self.clusters[root2.coordinates])
                         del self.clusters[root2.coordinates]
+                        # Update mst weight list with weight of the component to add and this edge
+                        self.mst[root1.coordinates].extend(self.mst[root2.coordinates])
+                        self.mst[root1.coordinates].append(dist)
+                        del self.mst[root2.coordinates]
                         # Update union-find structure        
                         root1.unite(root2)
                 # Skip edge if already stored the reflection
@@ -69,6 +73,7 @@ class GraphSegmentator():
                 # If not, store edge in dictionary
                 self.edges[(vertex, neighbour)] = Edge(vertex, neighbour, distance = dist)
         print("Calculating edges... {:.2%}".format(c / self.width / self.height), end="\r", flush=True)
+
 
     def get_edge(self, vertex1, vertex2):
         '''Returns the weight of the edge that connects vertex1 and vertex2.
@@ -114,45 +119,6 @@ class GraphSegmentator():
                 neighbours.append((x + 1, y + 1))
         return neighbours
 
-    def mst(self, root):
-        '''Returns the weights of the edges in the minimal spanning tree of 
-        the given cluster. This is donde by a greedy algorithm, that chooses 
-        the edges with the lowest weights to build the tree.
-        ----------
-        Parameters:
-            image:
-                image to use for vertex values
-            root:
-                vertex that is the root of a cluster
-        Returns:
-            an iterable of weights (floats) that supports union-find
-        '''
-        # Dictionary of union-find nodes for the algorithm
-        mst = {}
-        edges = []
-        for vertex in self.clusters[root.coordinates]:
-            for neighbour in self.neighbours(vertex):
-                if self.vertices[vertex].find() == self.vertices[neighbour].find():
-                    edges.append(self.get_edge(vertex, neighbour))
-            mst[vertex] = Vertex(vertex)
-
-        mst_weights = []
-
-        for edge in sorted(edges, key=lambda edge: edge.weight):
-            # Edge has already been counted
-            if mst[edge.vertex1].find() == mst[edge.vertex2].find():
-                continue
-            # There is no edge connecting the nodes in the mst
-            else:
-                # Connect the nodes with this edge
-                mst[edge.vertex1].find().unite(mst[edge.vertex2].find())
-                mst_weights.append(edge.weight)
-
-            if len(mst.keys()) == len(self.clusters[root.coordinates]):
-                break
-
-        return mst_weights if len(mst_weights) != 0 else [0]
-
     def internal_dif(self, root):
         '''Returns the internal difference of a cluster
         ----------
@@ -164,7 +130,7 @@ class GraphSegmentator():
         Returns:
             float
         '''
-        return max(self.mst(root))
+        return max(self.mst[root.coordinates]) if len(self.mst[root.coordinates]) != 0 else 0
 
     def minimum_internal_dif(self, root1, root2):
         '''Returns the minimum internal difference between two clusters
@@ -210,7 +176,7 @@ if __name__ == '__main__':
     def segment_image(img, result_name):
         start = datetime.datetime.now()
         print("Starting at {}.".format(start))
-        g = GraphSegmentator(img, 1000, store_data=True)
+        g = GraphSegmentator(img, 1000)
         clusters = g.segment()
         finish = datetime.datetime.now()
         print("Finished at {}.".format(finish))
@@ -228,14 +194,6 @@ if __name__ == '__main__':
 
         skimage.io.imsave(result_name, new_img)
 
-    img = skimage.io.imread("images/image_6.png")
+    img = skimage.io.imread("images/image_1.jpg")
 
-    img = skimage.color.convert_colorspace(img, 'RGB', 'HSV')
-
-    segment_image(img, "result_image6HSV.jpg")
-
-    img = skimage.io.imread("images/image_6.png")
-
-    img = skimage.color.rgb2lab(img)
-
-    segment_image(img, "result_image6LAB.jpg")
+    segment_image(img, "result_image_1.jpg")
